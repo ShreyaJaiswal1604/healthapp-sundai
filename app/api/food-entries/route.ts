@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
     // Save to food_logs table (updated to match your schema without user_id)
     const dbEntry = {
-      "Cycle start time": foodEntry.timestamp,
+      "Cycle start time": foodEntry.cycle_start_time,
       "Meal type": foodEntry.metadata.mealType,
       "Food name": `Photo meal - ${foodEntry.metadata.mealType}`,
       Description: foodEntry.metadata.notes,

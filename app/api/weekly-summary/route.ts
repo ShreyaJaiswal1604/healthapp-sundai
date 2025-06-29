@@ -6,6 +6,8 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env
 
 export async function POST(request: Request) {
   try {
+
+    console.log("calling post request")
     const { userId } = await request.json()
 
     // Fetch comprehensive health data for the past week
@@ -62,6 +64,8 @@ Please provide a comprehensive but concise weekly summary with specific insights
 }
 
 async function fetchWeeklyHealthData(userId: string) {
+
+  console.log("fetch weekly data")
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
   try {
