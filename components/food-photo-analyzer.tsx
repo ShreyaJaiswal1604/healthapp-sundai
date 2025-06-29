@@ -212,20 +212,23 @@ export function FoodPhotoAnalyzer() {
     return "text-red-600"
   }
 
-  const getHealthScoreBadge = (category: string) => {
-    switch (category.toLowerCase()) {
+  const getHealthScoreBadge = (category?: string) => {
+    const safeCategory = category?.toLowerCase?.() || "";
+  
+    switch (safeCategory) {
       case "excellent":
-        return "default"
+        return "default";
       case "good":
-        return "secondary"
+        return "success";
       case "fair":
-        return "outline"
+        return "warning";
       case "poor":
-        return "destructive"
+        return "destructive";
       default:
-        return "outline"
+        return "secondary";
     }
-  }
+  };
+  
 
   return (
     <div className="space-y-6">
@@ -566,7 +569,7 @@ export function FoodPhotoAnalyzer() {
                       </div>
                     </div>
 
-                    {analysisResult.healthAssessment.concerns.length > 0 && (
+                    {analysisResult.healthAssessment.concerns && analysisResult.healthAssessment.concerns.length > 0 && (
                       <Alert>
                         <AlertTriangle className="h-4 w-4" />
                         <AlertDescription>
@@ -582,7 +585,7 @@ export function FoodPhotoAnalyzer() {
                       </Alert>
                     )}
 
-                    {analysisResult.healthAssessment.positives.length > 0 && (
+                    {analysisResult.healthAssessment.positives && analysisResult.healthAssessment.positives.length > 0 && (
                       <Alert>
                         <CheckCircle2 className="h-4 w-4" />
                         <AlertDescription>
@@ -654,7 +657,7 @@ export function FoodPhotoAnalyzer() {
               </div>
 
               {/* Contextual Insights */}
-              {analysisResult.contextualInsights.length > 0 && (
+              {analysisResult.contextualInsights && analysisResult.contextualInsights.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Contextual Insights</CardTitle>
