@@ -3,7 +3,7 @@ import { openai } from "@ai-sdk/openai"
 
 export async function POST(request: Request) {
   try {
-    const { foodName, description, quantity, unit, photo } = await request.json()
+    const { foodName, description, quantity, unit, photo } = await request.json();
 
     let prompt = `Analyze the following food item and provide detailed nutritional information:
 
@@ -33,15 +33,13 @@ Please provide a JSON response with the following structure:
   "suggestions": ["improvement_suggestion_1", "improvement_suggestion_2"],
   "mealTiming": "optimal_timing_recommendation",
   "portionAssessment": "portion_size_feedback"
-}`
+}`;
 
     if (photo) {
-      prompt += `\n\nNote: A photo of the food has been provided. Please analyze the visual appearance to refine your nutritional estimates, considering portion size, preparation method, and visible ingredients.`
+      prompt += `\n\nNote: A photo of the food has been provided. Please analyze the visual appearance to refine your nutritional estimates, considering portion size, preparation method, and visible ingredients.`;
     }
 
-    const { text } = await generateText({
-      model: openai("gpt-4o"),
-      system: `You are a certified nutritionist and dietitian with expertise in food analysis and nutritional assessment. 
+    const systemPrompt = `You are a certified nutritionist and dietitian with expertise in food analysis and nutritional assessment. 
 
 Key capabilities:
 - Accurate calorie and macronutrient estimation
@@ -57,28 +55,43 @@ Guidelines:
 4. Give practical, actionable health advice
 5. Be encouraging while being honest about nutritional content
 6. Consider the food in context of overall daily nutrition needs
-7. Always respond with valid JSON format`,
-      prompt,
-    })
+7. Always respond with valid JSON format`;
 
-    // Parse the JSON response
-    let analysis
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, // Use environment variable
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o", // Or any model listed on OpenRouter
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7,
+      })
+    });
+
+    const result = await openRouterResponse.json();
+    const text = result.choices?.[0]?.message?.content || "";
+
+    let analysis;
     try {
-      analysis = JSON.parse(text)
+      analysis = JSON.parse(text);
     } catch (parseError) {
-      // If JSON parsing fails, create a structured response
       analysis = {
         calories: 0,
         macros: { protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 },
         healthScore: "moderate",
         healthAnalysis: "Unable to parse detailed analysis",
         suggestions: ["Please provide more specific food details for better analysis"],
-      }
+      };
     }
 
-    return Response.json({ analysis })
+    return Response.json({ analysis });
   } catch (error) {
-    console.error("Error analyzing food:", error)
-    return Response.json({ error: "Failed to analyze food" }, { status: 500 })
+    console.error("Error analyzing food:", error);
+    return Response.json({ error: "Failed to analyze food" }, { status: 500 });
   }
 }

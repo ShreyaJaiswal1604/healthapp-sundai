@@ -44,19 +44,26 @@ export async function getSleepData(limit = 7) {
 
 // Fetch physiological cycles (recovery data)
 export async function getPhysiologicalData(limit = 7) {
+  console.log("getPhysiologicalData")
   try {
     if (!isSupabaseConfigured() || !supabase) {
+      console.log("supabase not configured")
       return []
     }
 
-    const { data, error } = await supabase
-      .from("physiological_cycles")
-      .select("*")
-      .order("Cycle start time", { ascending: false })
-      .limit(limit)
+    console.log("supabase configured")
 
-    if (error) throw error
-    return data || []
+  const { data, error } = await supabase
+    .from("physiological_cycles")
+    .select("*");
+
+  if (error) {
+    console.error("Error fetching data:", error);
+    throw error;
+  }
+
+  return data || [];
+
   } catch (error) {
     console.error("Error fetching physiological data:", error)
     return []

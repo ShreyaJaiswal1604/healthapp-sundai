@@ -1,12 +1,9 @@
-import { generateText } from "ai"
-import { openai } from "@ai-sdk/openai"
 import { supabaseAdmin, isSupabaseConfigured } from "@/lib/supabase"
 
 export async function POST(request: Request) {
   try {
     const { message, userId, conversationHistory } = await request.json()
 
-    // Check if Supabase is configured
     if (!isSupabaseConfigured()) {
       return Response.json({
         response:
@@ -17,13 +14,18 @@ export async function POST(request: Request) {
       })
     }
 
-    // Fetch user's recent health data
     const healthData = await fetchUserHealthData()
 
-    // Generate contextual response
-    const { text } = await generateText({
-      model: openai("gpt-4o"),
-      system: `You are an AI Health Coach specializing in fitness tracking data analysis. You have access to comprehensive health data including recovery scores, sleep metrics, workout performance, and medical lab results.
+    const openrouterApiKey = process.env.OPENROUTER_API_KEY
+    if (!openrouterApiKey) {
+      throw new Error("OpenRouter API key missing")
+    }
+
+    // Construct messages for OpenRouter
+    const messages = [
+      {
+        role: "system",
+        content: `You are an AI Health Coach specializing in fitness tracking data analysis. You have access to comprehensive health data including recovery scores, sleep metrics, workout performance, and medical lab results.
 
 Key personality traits:
 - Expert in recovery science and sleep optimization
@@ -42,14 +44,40 @@ Guidelines:
 4. Flag concerning trends in health metrics
 5. Keep responses under 200 words unless detailed explanation needed
 6. Focus on recovery, sleep, and performance optimization`,
-
-      prompt: `User message: "${message}"
+      },
+      {
+        role: "user",
+        content: `User message: "${message}"
 
 Previous conversation context:
 ${conversationHistory?.map((msg: any) => `${msg.isUser ? "User" : "Coach"}: ${msg.content}`).join("\n") || "No previous context"}
 
 Please provide a helpful, personalized response based on the user's health tracking data.`,
+      },
+    ]
+
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openrouterApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-4o", // or another OpenRouter model
+        messages,
+      }),
     })
+
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`OpenRouter error: ${resp.status} ${text}`)
+    }
+
+    const data = await resp.json()
+    let text = data?.choices?.[0]?.message?.content || ""
+
+    // Optional: clean up markdown code blocks if needed:
+    text = text.replace(/^```json\s*/, "").replace(/```$/, "").trim()
 
     const category = categorizeResponse(message, text)
     const priority = determinePriority(text, healthData)
@@ -74,32 +102,29 @@ Please provide a helpful, personalized response based on the user's health track
   }
 }
 
+// --- Your existing helper functions unchanged ---
 async function fetchUserHealthData() {
   try {
     if (!supabaseAdmin) return {}
 
-    // Fetch recent recovery data
     const { data: recovery } = await supabaseAdmin
       .from("physiological_cycles")
       .select("*")
       .order("Cycle start time", { ascending: false })
       .limit(7)
 
-    // Fetch recent sleep data
     const { data: sleep } = await supabaseAdmin
       .from("sleep")
       .select("*")
       .order("Cycle start time", { ascending: false })
       .limit(7)
 
-    // Fetch recent workouts
     const { data: workouts } = await supabaseAdmin
       .from("workouts")
       .select("*")
       .order("Workout start time", { ascending: false })
       .limit(10)
 
-    // Fetch lab results
     const { data: labResults } = await supabaseAdmin.from("medical_lab_results").select("*")
 
     return { recovery, sleep, workouts, labResults, nutrition: [] }
@@ -137,7 +162,9 @@ function formatHealthDataForAI(healthData: any): string {
     )
     const avgStrain = totalStrain / healthData.workouts.length
 
-    summary += `Workouts (recent): ${healthData.workouts.length} sessions, avg strain ${avgStrain.toFixed(1)}. Activities: ${[...new Set(healthData.workouts.map((w: any) => w["Activity name"]))].join(", ")}. `
+    summary += `Workouts (recent): ${healthData.workouts.length} sessions, avg strain ${avgStrain.toFixed(1)}. Activities: ${[
+      ...new Set(healthData.workouts.map((w: any) => w["Activity name"])),
+    ].join(", ")}. `
   }
 
   if (healthData.labResults?.length > 0) {
