@@ -184,7 +184,7 @@ export function FoodPhotoAnalyzer() {
         body: JSON.stringify(foodEntry),
       })
     } catch (error) {
-      console.error("Error saving food entry:", error)
+      console.error("Error saving food entry saveFoodEntry:", error)
     }
   }
 

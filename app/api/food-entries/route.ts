@@ -55,13 +55,13 @@ export async function POST(request: Request) {
     const { data, error } = await supabaseAdmin.from("food_logs").insert(dbEntry).select().single()
 
     if (error) {
-      console.error("Supabase error:", error)
+      console.error("Supabase error dbEntry:", error)
       throw error
     }
 
     return Response.json({ success: true, data })
   } catch (error) {
-    console.error("Error saving food entry:", error)
+    console.error("Error saving food entry POST:", error)
     return Response.json({ error: "Failed to save food entry" }, { status: 500 })
   }
 }

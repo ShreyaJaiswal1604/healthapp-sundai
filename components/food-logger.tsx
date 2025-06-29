@@ -144,10 +144,12 @@ export function FoodLogger() {
       quantity: currentEntry.quantity || 1,
       unit: currentEntry.unit || "serving",
       mealTime: currentEntry.mealTime || new Date().toTimeString().slice(0, 5),
-      estimatedCalories: currentEntry.estimatedCalories,
-      macros: currentEntry.macros,
+      estimatedCalories: currentEntry.estimatedCalories || 50,
+      macros: currentEntry.macros || undefined,
       createdAt: new Date(),
     }
+
+    console.log("newEntry: " + newEntry)
 
     try {
       // Save to database
@@ -166,7 +168,7 @@ export function FoodLogger() {
         throw new Error("Failed to save food entry")
       }
     } catch (error) {
-      console.error("Error saving food entry:", error)
+      console.error("Error saving food entry newEntry:", error)
       alert("Failed to save food entry. Please try again.")
     }
   }

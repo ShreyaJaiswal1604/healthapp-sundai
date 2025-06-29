@@ -6,17 +6,13 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env
 
 export async function POST(request: Request) {
   try {
-
     console.log("calling post request")
     const { userId } = await request.json()
 
     // Fetch comprehensive health data for the past week
     const healthData = await fetchWeeklyHealthData(userId)
 
-    // Generate AI-powered weekly summary
-    const { text } = await generateText({
-      model: openai("gpt-4o"),
-      system: `You are an AI Health Coach creating a comprehensive weekly health summary. 
+    const systemContent = `You are an AI Health Coach creating a comprehensive weekly health summary. 
 
 Create a structured summary that includes:
 1. Overall health score (1-10)
@@ -25,9 +21,9 @@ Create a structured summary that includes:
 4. Specific actionable recommendations
 5. Goals for next week
 
-Be encouraging but honest about areas needing attention. Use data-driven insights and maintain a supportive tone.`,
+Be encouraging but honest about areas needing attention. Use data-driven insights and maintain a supportive tone.`
 
-      prompt: `Generate a weekly health summary for this user based on their data:
+    const userContent = `Generate a weekly health summary for this user based on their data:
 
 User Profile:
 - Name: ${healthData.user?.name}
@@ -37,8 +33,38 @@ User Profile:
 Weekly Health Data:
 ${formatWeeklyDataForAI(healthData)}
 
-Please provide a comprehensive but concise weekly summary with specific insights and recommendations.`,
+Please provide a comprehensive but concise weekly summary with specific insights and recommendations.`
+
+    // Call OpenRouter API with fetch
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemContent },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.7,
+        max_tokens: 800,
+      }),
     })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("OpenRouter API error:", errorText)
+      return Response.json({ error: "Failed to generate summary from OpenRouter" }, { status: 500 })
+    }
+
+    const data = await response.json()
+    const text = data.choices?.[0]?.message?.content
+
+    if (!text) {
+      return Response.json({ error: "No summary returned from OpenRouter" }, { status: 500 })
+    }
 
     // Store the summary as a recommendation
     await supabase.from("health_recommendations").insert({
@@ -62,6 +88,7 @@ Please provide a comprehensive but concise weekly summary with specific insights
     return Response.json({ error: "Failed to generate weekly summary" }, { status: 500 })
   }
 }
+
 
 async function fetchWeeklyHealthData(userId: string) {
 

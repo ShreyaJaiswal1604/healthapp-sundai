@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 
     return Response.json({ success: true, data })
   } catch (error) {
-    console.error("Error saving food entry:", error)
+    console.error("Error saving food entry food-entries:", error)
     return Response.json({ error: "Failed to save food entry" }, { status: 500 })
   }
 }
