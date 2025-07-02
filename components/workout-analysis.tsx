@@ -4,27 +4,13 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts"
-import { Activity, Flame, Clock, MapPin } from "lucide-react"
-import { getWorkoutsData } from "@/lib/database"
-
-interface WorkoutData {
-  "Workout start time": string
-  "Duration (min)": number
-  "Activity name": string
-  "Activity Strain": number
-  "Energy burned (cal)": number
-  "Max HR (bpm)": number
-  "Average HR (bpm)": number
-  "HR Zone 1 %": number
-  "HR Zone 2 %": number
-  "HR Zone 3 %": number
-  "Distance (meters)": string
-  "GPS enabled": boolean
-}
+import { Activity, Flame, Clock, MapPin, Zap } from "lucide-react"
+import type { WhoopWorkout } from "@/lib/whoop"
 
 export function WorkoutAnalysis() {
-  const [data, setData] = useState<WorkoutData[]>([])
+  const [whoopData, setWhoopData] = useState<WhoopWorkout[]>([])
   const [loading, setLoading] = useState(true)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -32,10 +18,19 @@ export function WorkoutAnalysis() {
 
   const fetchData = async () => {
     try {
-      const workoutData = await getWorkoutsData(10)
-      setData(workoutData)
+      const whoopResponse = await fetch('/api/whoop/workouts?limit=10')
+      if (whoopResponse.ok) {
+        const whoopResult = await whoopResponse.json()
+        setWhoopData(whoopResult.records || [])
+        setIsConnected(true)
+      } else {
+        setIsConnected(false)
+        setWhoopData([])
+      }
     } catch (error) {
-      console.error("Error fetching workout data:", error)
+      console.log("Whoop workout data not available")
+      setIsConnected(false)
+      setWhoopData([])
     } finally {
       setLoading(false)
     }
@@ -58,23 +53,56 @@ export function WorkoutAnalysis() {
     )
   }
 
-  const recentWorkouts = data.slice(0, 7)
-  const chartData = recentWorkouts
-    .slice()
-    .reverse()
-    .map((workout) => ({
-      date: new Date(workout["Workout start time"]).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      strain: workout["Activity Strain"],
-      calories: workout["Energy burned (cal)"],
-      duration: workout["Duration (min)"],
-      avgHR: workout["Average HR (bpm)"],
-      maxHR: workout["Max HR (bpm)"],
-    }))
+  if (!isConnected || whoopData.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <Activity className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">Connect Your Whoop Device</h3>
+          <p className="text-muted-foreground">
+            Connect your Whoop device to view workout analysis and strain data
+          </p>
+        </div>
+      </div>
+    )
+  }
 
-  const totalCalories = recentWorkouts.reduce((sum, workout) => sum + (workout["Energy burned (cal)"] || 0), 0)
-  const totalDuration = recentWorkouts.reduce((sum, workout) => sum + (workout["Duration (min)"] || 0), 0)
-  const avgStrain =
-    recentWorkouts.reduce((sum, workout) => sum + (workout["Activity Strain"] || 0), 0) / recentWorkouts.length
+  const recentWorkouts = whoopData.slice(0, 7).map(workout => {
+    const durationMinutes = Math.round((new Date(workout.end).getTime() - new Date(workout.start).getTime()) / 60000)
+    return {
+      "Workout start time": workout.start,
+      "Duration (min)": durationMinutes, // Whole number minutes
+      "Activity name": `Sport ID ${workout.sport_id}`, // You might want to map sport IDs to names
+      "Activity Strain": Math.round(workout.score.strain * 100) / 100, // 2 decimal places
+      "Energy burned (cal)": Math.round((workout.score.kilojoule * 0.239006) * 100) / 100, // 2 decimal places
+      "Max HR (bpm)": Math.round(workout.score.max_heart_rate),
+      "Average HR (bpm)": Math.round(workout.score.average_heart_rate),
+      "HR Zone 1 %": 0, // These would need to be calculated from zone_duration
+      "HR Zone 2 %": 0,
+      "HR Zone 3 %": 0,
+      "Distance (meters)": workout.score.distance_meter.toString(),
+      "GPS enabled": workout.score.distance_meter > 0
+    }
+  })
+
+  const chartData = whoopData
+    .slice(0, 7)
+    .reverse()
+    .map((workout) => {
+      const durationMinutes = Math.round((new Date(workout.end).getTime() - new Date(workout.start).getTime()) / 60000)
+      return {
+        date: new Date(workout.start).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        strain: Math.round(workout.score.strain * 100) / 100,
+        calories: Math.round((workout.score.kilojoule * 0.239006) * 100) / 100,
+        duration: durationMinutes, // Whole number minutes
+        avgHR: Math.round(workout.score.average_heart_rate),
+        maxHR: Math.round(workout.score.max_heart_rate),
+      }
+    })
+
+  const totalCalories = Math.round(recentWorkouts.reduce((sum, workout) => sum + (workout["Energy burned (cal)"] || 0), 0) * 100) / 100
+  const totalDuration = recentWorkouts.reduce((sum, workout) => sum + (workout["Duration (min)"] || 0), 0) // Whole number minutes
+  const avgStrain = Math.round((recentWorkouts.reduce((sum, workout) => sum + (workout["Activity Strain"] || 0), 0) / recentWorkouts.length) * 100) / 100
 
   const formatDuration = (minutes: number) => {
     const hours = Math.floor(minutes / 60)
@@ -98,6 +126,13 @@ export function WorkoutAnalysis() {
 
   return (
     <div className="space-y-6">
+      {/* Data Source Indicator */}
+      <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950 rounded-lg">
+        <Zap className="h-4 w-4 text-blue-600" />
+        <span className="text-sm text-blue-800 dark:text-blue-200">
+          Displaying real-time workout data from your Whoop device
+        </span>
+      </div>
       {/* Key Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -106,7 +141,7 @@ export function WorkoutAnalysis() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${getStrainColor(avgStrain)}`}>{avgStrain.toFixed(1)}</div>
+            <div className={`text-2xl font-bold ${getStrainColor(avgStrain)}`}>{avgStrain}</div>
             <p className="text-xs text-muted-foreground mt-1">{getStrainLevel(avgStrain)} intensity</p>
           </CardContent>
         </Card>
@@ -117,7 +152,7 @@ export function WorkoutAnalysis() {
             <Flame className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{Math.round(totalCalories).toLocaleString()}</div>
+            <div className="text-2xl font-bold">{totalCalories.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground mt-1">Last 7 workouts</p>
           </CardContent>
         </Card>
@@ -216,9 +251,9 @@ export function WorkoutAnalysis() {
                 <div className="text-right">
                   <div className="flex items-center space-x-4">
                     <div>
-                      <p className="text-sm font-medium">{Math.round(workout["Energy burned (cal)"])} cal</p>
+                      <p className="text-sm font-medium">{workout["Energy burned (cal)"]} cal</p>
                       <p className="text-xs text-muted-foreground">
-                        Strain: {workout["Activity Strain"]?.toFixed(1) || "0.0"}
+                        Strain: {workout["Activity Strain"] || "0.00"}
                       </p>
                     </div>
                     <Badge

@@ -5,27 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 import { Moon, Clock, TrendingUp, Zap } from "lucide-react"
-import { getSleepData } from "@/lib/database"
-
-interface SleepData {
-  "Cycle start time": string
-  "Sleep onset": string
-  "Wake onset": string
-  "Sleep performance %": number
-  "Asleep duration (min)": number
-  "In bed duration (min)": number
-  "Light sleep duration (min)": number
-  "Deep (SWS) duration (min)": number
-  "REM duration (min)": number
-  "Awake duration (min)": number
-  "Sleep efficiency %": number
-  "Sleep debt (min)": number
-  "Respiratory rate (rpm)": number
-}
+import type { WhoopSleep } from "@/lib/whoop"
 
 export function SleepAnalysis() {
-  const [data, setData] = useState<SleepData[]>([])
+  const [whoopData, setWhoopData] = useState<WhoopSleep[]>([])
   const [loading, setLoading] = useState(true)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -33,10 +18,19 @@ export function SleepAnalysis() {
 
   const fetchData = async () => {
     try {
-      const sleepData = await getSleepData(7)
-      setData(sleepData)
+      const whoopResponse = await fetch('/api/whoop/sleep?limit=7')
+      if (whoopResponse.ok) {
+        const whoopResult = await whoopResponse.json()
+        setWhoopData(whoopResult.records || [])
+        setIsConnected(true)
+      } else {
+        setIsConnected(false)
+        setWhoopData([])
+      }
     } catch (error) {
-      console.error("Error fetching sleep data:", error)
+      console.log("Whoop sleep data not available")
+      setIsConnected(false)
+      setWhoopData([])
     } finally {
       setLoading(false)
     }
@@ -59,16 +53,41 @@ export function SleepAnalysis() {
     )
   }
 
-  const latestSleep = data[0]
-  const chartData = data
+  if (!isConnected || whoopData.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <Moon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">Connect Your Whoop Device</h3>
+          <p className="text-muted-foreground">
+            Connect your Whoop device to view detailed sleep analysis
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const latestSleep = {
+    "Asleep duration (min)": Math.round((whoopData[0].score.stage_summary.total_in_bed_time_milli - whoopData[0].score.stage_summary.total_awake_time_milli) / 60000),
+    "Sleep performance %": Math.round(whoopData[0].score.sleep_performance_percentage * 100) / 100,
+    "Sleep efficiency %": Math.round(whoopData[0].score.sleep_efficiency_percentage * 100) / 100,
+    "Sleep debt (min)": Math.round(whoopData[0].score.sleep_needed.need_from_sleep_debt_milli / 60000),
+    "Light sleep duration (min)": Math.round(whoopData[0].score.stage_summary.total_light_sleep_time_milli / 60000),
+    "Deep (SWS) duration (min)": Math.round(whoopData[0].score.stage_summary.total_slow_wave_sleep_time_milli / 60000),
+    "REM duration (min)": Math.round(whoopData[0].score.stage_summary.total_rem_sleep_time_milli / 60000),
+    "Awake duration (min)": Math.round(whoopData[0].score.stage_summary.total_awake_time_milli / 60000),
+    "Respiratory rate (rpm)": Math.round(whoopData[0].score.respiratory_rate * 100) / 100
+  }
+
+  const chartData = whoopData
     .slice()
     .reverse()
     .map((item) => ({
-      date: new Date(item["Cycle start time"]).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      duration: Math.round((item["Asleep duration (min)"] / 60) * 10) / 10,
-      efficiency: item["Sleep efficiency %"],
-      performance: item["Sleep performance %"],
-      debt: item["Sleep debt (min)"],
+      date: new Date(item.start).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      duration: Math.round(((item.score.stage_summary.total_in_bed_time_milli - item.score.stage_summary.total_awake_time_milli) / 60000 / 60) * 100) / 100, // Hours with 2 decimal places
+      efficiency: Math.round(item.score.sleep_efficiency_percentage * 100) / 100,
+      performance: Math.round(item.score.sleep_performance_percentage * 100) / 100,
+      debt: Math.round(item.score.sleep_needed.need_from_sleep_debt_milli / 60000), // Whole number minutes
     }))
 
   const sleepStagesData = latestSleep
@@ -97,6 +116,13 @@ export function SleepAnalysis() {
 
   return (
     <div className="space-y-6">
+      {/* Data Source Indicator */}
+      <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950 rounded-lg">
+        <Zap className="h-4 w-4 text-blue-600" />
+        <span className="text-sm text-blue-800 dark:text-blue-200">
+          Displaying real-time sleep data from your Whoop device
+        </span>
+      </div>
       {/* Key Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -246,7 +272,7 @@ export function SleepAnalysis() {
             <CardTitle className="text-lg">Respiratory Rate</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{latestSleep?.["Respiratory rate (rpm)"]?.toFixed(1) || "0.0"}</div>
+            <div className="text-2xl font-bold">{latestSleep?.["Respiratory rate (rpm)"] || "0.00"}</div>
             <p className="text-sm text-muted-foreground">breaths per minute</p>
           </CardContent>
         </Card>

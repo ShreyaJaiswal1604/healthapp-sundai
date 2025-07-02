@@ -6,21 +6,12 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { Heart, Activity, TrendingUp, Zap } from "lucide-react"
-import { getPhysiologicalData } from "@/lib/database"
-
-interface PhysiologicalData {
-  "Cycle start time": string
-  "Recovery score %": number
-  "Resting heart rate (bpm)": number
-  "Heart rate variability (ms)": number
-  "Skin temp (celsius)": number
-  "Blood oxygen %": number
-  "Day Strain": string
-}
+import type { WhoopRecovery } from "@/lib/whoop"
 
 export function RecoveryDashboard() {
-  const [data, setData] = useState<PhysiologicalData[]>([])
+  const [whoopData, setWhoopData] = useState<WhoopRecovery[]>([])
   const [loading, setLoading] = useState(true)
+  const [isConnected, setIsConnected] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -28,10 +19,18 @@ export function RecoveryDashboard() {
 
   const fetchData = async () => {
     try {
-      const physiologicalData = await getPhysiologicalData(7)
-      setData(physiologicalData)
+      const whoopResponse = await fetch('/api/whoop/recovery?limit=7')
+      if (whoopResponse.ok) {
+        const whoopResult = await whoopResponse.json()
+        setWhoopData(whoopResult.records || [])
+        setIsConnected(true)
+      } else {
+        setIsConnected(false)
+      }
     } catch (error) {
-      console.error("Error fetching recovery data:", error)
+      console.log("Whoop recovery data not available")
+      setIsConnected(false)
+      setWhoopData([])
     } finally {
       setLoading(false)
     }
@@ -54,16 +53,38 @@ export function RecoveryDashboard() {
     )
   }
 
-  const latestData = data[0]
-  const chartData = data
+  if (!isConnected || whoopData.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <Zap className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">Connect Your Whoop Device</h3>
+          <p className="text-muted-foreground">
+            Connect your Whoop device to view recovery, sleep, and workout data
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const latestData = {
+    "Recovery score %": whoopData[0].score.recovery_score,
+    "Resting heart rate (bpm)": whoopData[0].score.resting_heart_rate,
+    "Heart rate variability (ms)": whoopData[0].score.hrv_rmssd_milli,
+    "Skin temp (celsius)": whoopData[0].score.skin_temp_celsius,
+    "Blood oxygen %": whoopData[0].score.spo2_percentage,
+    "Day Strain": "N/A"
+  }
+
+  const chartData = whoopData
     .slice()
     .reverse()
     .map((item) => ({
-      date: new Date(item["Cycle start time"]).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      recovery: item["Recovery score %"],
-      hrv: item["Heart rate variability (ms)"],
-      rhr: item["Resting heart rate (bpm)"],
-      strain: Number.parseFloat(item["Day Strain"]) || 0,
+      date: new Date(item.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      recovery: item.score.recovery_score,
+      hrv: item.score.hrv_rmssd_milli,
+      rhr: item.score.resting_heart_rate,
+      strain: 0, // Strain data would come from a different endpoint
     }))
 
   const getRecoveryColor = (score: number) => {
@@ -80,6 +101,13 @@ export function RecoveryDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Data Source Indicator */}
+      <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950 rounded-lg">
+        <Zap className="h-4 w-4 text-blue-600" />
+        <span className="text-sm text-blue-800 dark:text-blue-200">
+          Displaying real-time data from your Whoop device
+        </span>
+      </div>
       {/* Key Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
