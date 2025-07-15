@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AuthService } from '@/lib/auth';
 import { whoopAuthService } from '@/lib/whoop-auth';
+import { AuthService } from '@/lib/auth';
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // Get the authenticated user
     const authService = new AuthService();
@@ -23,19 +23,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Disconnect user from Whoop
-    await whoopAuthService.disconnectUser(user.id);
+    // Get connection info
+    const connectionInfo = await whoopAuthService.getConnectionInfo(user.id);
     
-    // Clear any whoop cookies
-    const response = NextResponse.json({ success: true });
-    response.cookies.delete('whoop_access_token');
-    response.cookies.delete('whoop_refresh_token');
-    
-    return response;
+    return NextResponse.json(connectionInfo);
   } catch (error) {
-    console.error('Failed to disconnect Whoop:', error);
+    console.error('Failed to get Whoop connection status:', error);
     return NextResponse.json(
-      { error: 'Failed to disconnect' },
+      { error: 'Failed to get connection status' },
       { status: 500 }
     );
   }

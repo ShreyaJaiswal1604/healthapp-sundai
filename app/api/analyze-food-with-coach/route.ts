@@ -24,7 +24,7 @@ async function callOpenRouter(system, prompt) {
       "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: "google/gemini-2.5-flash",
       messages: [
         ...(system ? [{ role: "system", content: system }] : []),
         { role: "user", content: prompt },
@@ -59,7 +59,17 @@ export async function POST(request) {
 
     const userHealthContext = await fetchUserHealthContext(userId);
     const nutritionalAnalysis = await analyzeNutritionalContent(photo, metadata);
-    const coachResponse = await generateHealthCoachResponse(photo, metadata, nutritionalAnalysis, userHealthContext);
+    
+    console.log('Nutritional analysis result:', JSON.stringify(nutritionalAnalysis, null, 2));
+    
+    let coachResponse;
+    try {
+      coachResponse = await generateHealthCoachResponse(photo, metadata, nutritionalAnalysis, userHealthContext);
+    } catch (error) {
+      console.error('Error generating coach response:', error);
+      coachResponse = 'Health coach analysis unavailable';
+    }
+    
     const structuredAnalysis = await parseStructuredAnalysis(nutritionalAnalysis, coachResponse, metadata);
 
     return Response.json({
@@ -136,13 +146,17 @@ function formatHealthContextSummary(data) {
 }
 
 async function analyzeNutritionalContent(photo, metadata) {
-  const system = `You are a certified nutritionist analyzing food photos. Respond with valid JSON only in this format:
+  const system = `You are a certified nutritionist analyzing food photos. IMPORTANT: If multiple food items are visible, analyze only the PRIMARY/MAIN food item in the photo. Do not combine multiple foods into one analysis. Focus on the most prominent, central, or largest food item visible.
+
+You MUST always provide values for calories, protein, carbs, and fat. Never leave these fields empty or as null. If exact values are uncertain, provide your best estimate.
+
+Respond with valid JSON only in this format:
 {
-  "calories": number,
+  "calories": number (REQUIRED - never null/empty),
   "macros": {
-    "protein": number,
-    "carbs": number,
-    "fat": number,
+    "protein": number (REQUIRED - never null/empty),
+    "carbs": number (REQUIRED - never null/empty),
+    "fat": number (REQUIRED - never null/empty),
     "fiber": number,
     "sugar": number
   },
@@ -154,7 +168,7 @@ async function analyzeNutritionalContent(photo, metadata) {
     "vitamin_c_mg": number
   },
   "ingredients": ["ingredient1", "ingredient2"],
-  "preparationNotes": "cooking method and style observations"
+  "preparationNotes": "cooking method and style observations for the main food item only"
 }`;
 
   // Convert photo to base64
@@ -179,25 +193,55 @@ Additional metadata:
 - Preparation: ${metadata.preparationMethod}
 - Notes: ${metadata.notes}
 
-Please analyze the image and return the nutrition estimate in the required JSON format.`;
+Please analyze the image and return the nutrition estimate for the PRIMARY/MAIN food item only in the required JSON format. If multiple foods are visible, focus only on the most prominent or central food item.`;
 
   try {
     const text = await callOpenRouter(system, prompt);
-    console.log("test returned: " + text)
-    const jsony = JSON.parse(text)
-    console.log("json " + jsony)
-    console.log("test protein " + jsony.macros.protein)
-    if (!looksLikeJSON(text)) throw new Error(text);
-    return JSON.parse(text);
+    console.log("AI response length:", text?.length || 0);
+    console.log("AI response:", text);
+    
+    if (!text || text.trim() === "") {
+      throw new Error("AI returned empty response");
+    }
+    
+    if (!looksLikeJSON(text)) {
+      console.error("AI returned non-JSON response:", text);
+      throw new Error("AI response is not valid JSON");
+    }
+    
+    const parsedData = JSON.parse(text);
+    
+    // Validate that required fields are present and fix structure if needed
+    if (typeof parsedData.calories !== 'number') {
+      console.error('Invalid or missing calories:', parsedData.calories);
+      throw new Error('Missing or invalid calories field');
+    }
+    
+    if (!parsedData.macros || typeof parsedData.macros !== 'object') {
+      console.error('Invalid or missing macros object:', parsedData.macros);
+      throw new Error('Missing or invalid macros field');
+    }
+    
+    if (typeof parsedData.macros.protein !== 'number') {
+      console.error('Invalid or missing protein:', parsedData.macros.protein);
+      throw new Error('Missing or invalid macros.protein field');
+    }
+    
+    if (typeof parsedData.macros.carbs !== 'number') {
+      console.error('Invalid or missing carbs:', parsedData.macros.carbs);
+      throw new Error('Missing or invalid macros.carbs field');
+    }
+    
+    if (typeof parsedData.macros.fat !== 'number') {
+      console.error('Invalid or missing fat:', parsedData.macros.fat);
+      throw new Error('Missing or invalid macros.fat field');
+    }
+    
+    return parsedData;
   } catch (err) {
     console.error("Error parsing nutritional analysis:", err);
-    return {
-      calories: 0,
-      macros: { protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 },
-      micronutrients: { sodium_mg: 0, potassium_mg: 0, calcium_mg: 0, iron_mg: 0, vitamin_c_mg: 0 },
-      ingredients: [],
-      preparationNotes: "Unable to analyze",
-    };
+    console.error("Error parsing nutritional analysis - unable to provide nutrition data");
+    throw new Error("Failed to parse nutritional analysis");
   }
 }
 
@@ -219,11 +263,11 @@ Prep: ${metadata.preparationMethod}
 Notes: ${metadata.notes}
 
 Nutrition:
-Calories: ${nutritionalAnalysis.calories}
-Protein: ${nutritionalAnalysis.macros?.protein}g
-Carbs: ${nutritionalAnalysis.macros?.carbs}g
-Fat: ${nutritionalAnalysis.macros?.fat}g
-Ingredients: ${nutritionalAnalysis.ingredients?.join(", ")}
+Calories: ${nutritionalAnalysis?.calories || 'N/A'}
+Protein: ${nutritionalAnalysis?.macros?.protein || 'N/A'}g
+Carbs: ${nutritionalAnalysis?.macros?.carbs || 'N/A'}g
+Fat: ${nutritionalAnalysis?.macros?.fat || 'N/A'}g
+Ingredients: ${nutritionalAnalysis?.ingredients?.join(", ") || 'N/A'}
 
 Context:
 ${userHealthContext.summary}`;

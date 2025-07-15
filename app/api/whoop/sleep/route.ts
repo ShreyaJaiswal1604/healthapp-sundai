@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { whoopAPI } from '@/lib/whoop';
 
 export async function GET(request: NextRequest) {
+  // Get access token from cookies only
   const accessToken = request.cookies.get('whoop_access_token')?.value;
 
   if (!accessToken) {

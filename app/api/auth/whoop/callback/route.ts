@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { AuthService } from '@/lib/auth';
+import { whoopAuthService } from '@/lib/whoop-auth';
+import { whoopAPI } from '@/lib/whoop';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -21,6 +24,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Get the authenticated user
+    const authService = new AuthService();
+    const userSession = request.cookies.get('user_session')?.value;
+    
+    if (!userSession) {
+      return NextResponse.redirect(new URL('/?error=not_authenticated', request.url));
+    }
+
+    const user = await authService.getUser(userSession);
+    if (!user) {
+      return NextResponse.redirect(new URL('/?error=invalid_session', request.url));
+    }
+
     // Exchange authorization code for access token
     const tokenResponse = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {
       method: 'POST',
@@ -42,25 +58,32 @@ export async function GET(request: NextRequest) {
 
     const tokens = await tokenResponse.json();
 
-    // Store tokens securely (you might want to encrypt these)
+    // Get Whoop user info
+    const whoopUser = await whoopAPI.getUser(tokens.access_token);
+
+    console.log('Whoop OAuth successful, saving tokens for user:', user.id);
+    console.log('Whoop user ID:', whoopUser.user_id);
+    console.log('Token expires_in:', tokens.expires_in);
+    
+    try {
+      // Save tokens to database
+      await whoopAuthService.saveUserTokens(user.id, tokens, whoopUser.user_id.toString());
+      console.log('Tokens saved successfully');
+    } catch (saveError) {
+      console.error('Failed to save tokens to database:', saveError);
+      // Continue anyway and set cookie - tokens can be saved later
+    }
+
+    // Set up response
     const response = NextResponse.redirect(new URL('/?whoop_connected=true', request.url));
     
-    // Set secure cookies for tokens
+    // Set short-term cookie for immediate use
     response.cookies.set('whoop_access_token', tokens.access_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: tokens.expires_in || 3600,
+      maxAge: 3600, // 1 hour
     });
-
-    if (tokens.refresh_token) {
-      response.cookies.set('whoop_refresh_token', tokens.refresh_token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-      });
-    }
 
     // Clear the state cookie
     response.cookies.delete('whoop_oauth_state');

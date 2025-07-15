@@ -15,9 +15,8 @@ export async function POST(request: Request) {
 
     // Map incoming payload into your snake_case columns
     const dbEntry = {
-      cycle_start_time:       foodEntry.cycle_start_time,           // ISO string
-      cycle_end_time:         foodEntry.cycle_end_time  ?? null,
-      cycle_timezone:         foodEntry.cycle_timezone || "UTC",
+      logged_at:              foodEntry.timestamp || new Date().toISOString(),  // ISO string
+      user_id:                foodEntry.userId || "550e8400-e29b-41d4-a716-446655440000", // Default user ID
 
       meal_type:              foodEntry.metadata.mealType,
       food_name:              `Photo meal - ${foodEntry.metadata.mealType}`,
@@ -95,14 +94,14 @@ export async function GET(request: Request) {
     let query = supabaseAdmin
       .from("food_logs")
       .select("*")
-      .order("cycle_start_time", { ascending: false });
+      .order("logged_at", { ascending: false });
 
     if (date) {
       const startOfDay = `${date}T00:00:00Z`;
       const endOfDay   = `${date}T23:59:59Z`;
       query = query
-        .gte("cycle_start_time", startOfDay)
-        .lte("cycle_start_time", endOfDay);
+        .gte("logged_at", startOfDay)
+        .lte("logged_at", endOfDay);
     }
 
     const { data: rows, error } = await query.limit(limit);
@@ -117,7 +116,7 @@ export async function GET(request: Request) {
       meal_type:      entry.meal_type,
       food_name:      entry.food_name,
       calories:       entry.calories,
-      logged_at:      entry.cycle_start_time,
+      logged_at:      entry.logged_at,
       photo_url:      entry.photo_url,
       metadata: {
         location:            entry.location,

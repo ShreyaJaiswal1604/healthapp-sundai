@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +19,6 @@ import {
 } from "recharts"
 import { Apple, Zap, Target, TrendingUp, Clock, Utensils } from "lucide-react"
 import { FoodLogger } from "./food-logger"
-import { FoodPhotoAnalyzer } from "./food-photo-analyzer"
 import { RecentFoodAnalyses } from "./recent-food-analyses"
 
 interface NutritionData {
@@ -52,43 +51,154 @@ interface NutritionData {
 
 export function NutritionDashboard() {
   const [nutritionData, setNutritionData] = useState<NutritionData>({
-    totalCalories: 1850,
-    targetCalories: 2200,
+    totalCalories: 0,
+    targetCalories: 2200, // Keep target as default
     macros: {
-      protein: 125,
-      carbs: 180,
-      fat: 65,
-      fiber: 28,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      fiber: 0,
     },
     targetMacros: {
       protein: 140,
       carbs: 220,
       fat: 75,
     },
-    meals: [
-      { type: "breakfast", calories: 420, time: "07:30" },
-      { type: "lunch", calories: 580, time: "12:45" },
-      { type: "snack", calories: 180, time: "15:30" },
-      { type: "dinner", calories: 670, time: "19:15" },
-    ],
+    meals: [],
     micronutrients: {
-      sodium: 1850,
-      potassium: 2800,
-      calcium: 850,
-      iron: 12,
-      vitaminC: 85,
+      sodium: 0,
+      potassium: 0,
+      calcium: 0,
+      iron: 0,
+      vitaminC: 0,
     },
   })
+  
+  const [isLoading, setIsLoading] = useState(true)
 
-  const [weeklyTrends, setWeeklyTrends] = useState([
-    { day: "Mon", calories: 2100, protein: 130, carbs: 200, fat: 70 },
-    { day: "Tue", calories: 1950, protein: 125, carbs: 180, fat: 65 },
-    { day: "Wed", calories: 2250, protein: 140, carbs: 220, fat: 80 },
-    { day: "Thu", calories: 2000, protein: 135, carbs: 190, fat: 68 },
-    { day: "Fri", calories: 1850, protein: 125, carbs: 180, fat: 65 },
-    { day: "Sat", calories: 2400, protein: 150, carbs: 240, fat: 85 },
-    { day: "Sun", calories: 2150, protein: 145, carbs: 210, fat: 75 },
-  ])
+  // Load and calculate nutrition data from food logs
+  useEffect(() => {
+    loadNutritionData()
+  }, [])
+
+  const loadNutritionData = async () => {
+    try {
+      setIsLoading(true)
+      const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+      const response = await fetch(`/api/food-logs?date=${today}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        const foodLogs = data.foodLogs || []
+        
+        // Calculate totals from food logs
+        const totals = foodLogs.reduce((acc: any, log: any) => {
+          return {
+            calories: acc.calories + (log.calories || 0),
+            protein: acc.protein + (log.protein_g || 0),
+            carbs: acc.carbs + (log.carbs_g || 0),
+            fat: acc.fat + (log.fat_g || 0),
+            fiber: acc.fiber + (log.fiber_g || 0),
+            sodium: acc.sodium + (log.sodium_mg || 0),
+            potassium: acc.potassium + (log.potassium_mg || 0),
+            calcium: acc.calcium + (log.calcium_mg || 0),
+            iron: acc.iron + (log.iron_mg || 0),
+            vitaminC: acc.vitaminC + (log.vitamin_c_mg || 0)
+          }
+        }, {
+          calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0,
+          sodium: 0, potassium: 0, calcium: 0, iron: 0, vitaminC: 0
+        })
+        
+        // Group meals by type
+        const mealsByType = foodLogs.reduce((acc: any, log: any) => {
+          const mealType = log.meal_type || 'other'
+          if (!acc[mealType]) {
+            acc[mealType] = { calories: 0, time: log.meal_time || '12:00' }
+          }
+          acc[mealType].calories += log.calories || 0
+          return acc
+        }, {})
+        
+        const meals = Object.entries(mealsByType).map(([type, data]: [string, any]) => ({
+          type,
+          calories: data.calories,
+          time: data.time
+        }))
+        
+        setNutritionData(prev => ({
+          ...prev,
+          totalCalories: Math.round(totals.calories),
+          macros: {
+            protein: Math.round(totals.protein * 10) / 10,
+            carbs: Math.round(totals.carbs * 10) / 10,
+            fat: Math.round(totals.fat * 10) / 10,
+            fiber: Math.round(totals.fiber * 10) / 10,
+          },
+          meals,
+          micronutrients: {
+            sodium: Math.round(totals.sodium),
+            potassium: Math.round(totals.potassium),
+            calcium: Math.round(totals.calcium),
+            iron: Math.round(totals.iron * 10) / 10,
+            vitaminC: Math.round(totals.vitaminC),
+          }
+        }))
+      }
+    } catch (error) {
+      console.error('Error loading nutrition data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const [weeklyTrends, setWeeklyTrends] = useState<any[]>([])
+
+  // Load weekly trends data
+  useEffect(() => {
+    loadWeeklyTrends()
+  }, [])
+
+  const loadWeeklyTrends = async () => {
+    try {
+      const trends = []
+      const today = new Date()
+      
+      // Get data for the last 7 days
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today)
+        date.setDate(date.getDate() - i)
+        const dateString = date.toISOString().split('T')[0]
+        
+        const response = await fetch(`/api/food-logs?date=${dateString}`)
+        let dayTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 }
+        
+        if (response.ok) {
+          const data = await response.json()
+          const foodLogs = data.foodLogs || []
+          
+          dayTotals = foodLogs.reduce((acc: any, log: any) => ({
+            calories: acc.calories + (log.calories || 0),
+            protein: acc.protein + (log.protein_g || 0),
+            carbs: acc.carbs + (log.carbs_g || 0),
+            fat: acc.fat + (log.fat_g || 0)
+          }), dayTotals)
+        }
+        
+        trends.push({
+          day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+          calories: Math.round(dayTotals.calories),
+          protein: Math.round(dayTotals.protein * 10) / 10,
+          carbs: Math.round(dayTotals.carbs * 10) / 10,
+          fat: Math.round(dayTotals.fat * 10) / 10
+        })
+      }
+      
+      setWeeklyTrends(trends)
+    } catch (error) {
+      console.error('Error loading weekly trends:', error)
+    }
+  }
 
   const macroData = [
     {
@@ -136,12 +246,28 @@ export function NutritionDashboard() {
 
   const calorieStatus = getCalorieStatus()
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        {/* Food Logging */}
+        <div className="max-w-md mx-auto">
+          <FoodLogger />
+        </div>
+
+        {/* Loading State */}
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading nutrition data...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      {/* Food Logging Options */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <FoodPhotoAnalyzer />
-        <FoodLogger />
+      {/* Food Logging */}
+      <div className="max-w-md mx-auto">
+        <FoodLogger onFoodLogged={loadNutritionData} />
       </div>
 
       {/* Recent Analyses */}
@@ -205,11 +331,10 @@ export function NutritionDashboard() {
 
       {/* Detailed Analysis */}
       <Tabs defaultValue="macros" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="macros">Macros</TabsTrigger>
           <TabsTrigger value="meals">Meals</TabsTrigger>
           <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="micronutrients">Vitamins</TabsTrigger>
         </TabsList>
 
         <TabsContent value="macros" className="space-y-4">
@@ -369,75 +494,6 @@ export function NutritionDashboard() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="micronutrients" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Sodium</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{nutritionData.micronutrients.sodium}mg</div>
-                <Progress value={(nutritionData.micronutrients.sodium / 2300) * 100} className="mt-2" />
-                <p className="text-sm text-muted-foreground mt-1">Limit: 2300mg</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Potassium</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{nutritionData.micronutrients.potassium}mg</div>
-                <Progress value={(nutritionData.micronutrients.potassium / 3500) * 100} className="mt-2" />
-                <p className="text-sm text-muted-foreground mt-1">Target: 3500mg</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Calcium</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{nutritionData.micronutrients.calcium}mg</div>
-                <Progress value={(nutritionData.micronutrients.calcium / 1000) * 100} className="mt-2" />
-                <p className="text-sm text-muted-foreground mt-1">Target: 1000mg</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Iron</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{nutritionData.micronutrients.iron}mg</div>
-                <Progress value={(nutritionData.micronutrients.iron / 18) * 100} className="mt-2" />
-                <p className="text-sm text-muted-foreground mt-1">Target: 18mg</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Vitamin C</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{nutritionData.micronutrients.vitaminC}mg</div>
-                <Progress value={(nutritionData.micronutrients.vitaminC / 90) * 100} className="mt-2" />
-                <p className="text-sm text-muted-foreground mt-1">Target: 90mg</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Fiber</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{nutritionData.macros.fiber}g</div>
-                <Progress value={(nutritionData.macros.fiber / 25) * 100} className="mt-2" />
-                <p className="text-sm text-muted-foreground mt-1">Target: 25g</p>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
       </Tabs>
     </div>
   )

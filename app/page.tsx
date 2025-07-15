@@ -1,12 +1,12 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useAuth } from "@/context/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Heart, CheckCircle2, AlertCircle, X } from "lucide-react"
-import { HealthSidebar } from "@/components/health-sidebar"
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
+import { Heart, CheckCircle2, AlertCircle, X, User, LogOut } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { RecoveryDashboard } from "@/components/recovery-dashboard"
 import { SleepAnalysis } from "@/components/sleep-analysis"
 import { WorkoutAnalysis } from "@/components/workout-analysis"
@@ -15,112 +15,94 @@ import { HealthCoachChat } from "@/components/health-coach-chat"
 import { HealthRecommendationsPanel } from "@/components/health-recommendations-panel"
 import { NutritionDashboard } from "@/components/nutrition-dashboard"
 import { WhoopConnect } from "@/components/whoop-connect"
+import { AuthDialog } from "@/components/auth-dialog"
 
 export default function HealthDashboard() {
+  const { user, isLoading, login, logout } = useAuth()
   const [activeTab, setActiveTab] = useState("recovery")
-  const [visibleAlerts, setVisibleAlerts] = useState([0, 1, 2]) // Track which alerts are visible
+  const [showAuthDialog, setShowAuthDialog] = useState(false)
 
-  const healthAlerts = [
-    { type: "reminder", message: "Lab results show elevated cholesterol - follow up recommended", priority: "high", targetTab: "medical" },
-    { type: "achievement", message: "7-day recovery score averaging 75% - excellent!", priority: "low", targetTab: "recovery" },
-    { type: "warning", message: "Sleep debt accumulating - prioritize rest tonight", priority: "medium", targetTab: "sleep" },
-  ]
 
-  const handleViewAlert = (targetTab: string) => {
-    setActiveTab(targetTab)
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
-  const handleCloseAlert = (alertIndex: number) => {
-    setVisibleAlerts(prev => prev.filter(index => index !== alertIndex))
+  // Show auth dialog if user is not authenticated
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center p-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">Welcome to HealthApp</h1>
+          <p className="text-xl text-gray-600 mb-8">Your personal health and wellness companion</p>
+          <Button onClick={() => setShowAuthDialog(true)} size="lg">
+            Get Started
+          </Button>
+          <AuthDialog 
+            open={showAuthDialog} 
+            onOpenChange={setShowAuthDialog}
+            onSuccess={(userData) => {
+              login(userData)
+              setShowAuthDialog(false)
+            }}
+          />
+        </div>
+      </div>
+    )
   }
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full">
-        <HealthSidebar />
-        <SidebarInset>
-          <div className="flex-1 space-y-6 p-6">
+    <div className="min-h-screen w-full">
+      <div className="flex-1 space-y-6 p-6">
             {/* Header */}
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">Health Dashboard</h1>
                 <p className="text-muted-foreground">
-                  Comprehensive health tracking with recovery, sleep, and performance insights
+                  Welcome back, {user.name}! Your comprehensive health tracking dashboard.
                 </p>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-4">
                 <Badge variant="outline" className="text-green-600 border-green-200">
                   <CheckCircle2 className="w-3 h-3 mr-1" />
                   Synced
                 </Badge>
+                
+                {/* User Menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      {user.name}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={logout} className="text-red-600">
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
-            {/* Health Alerts */}
-            {visibleAlerts.length > 0 && (
-              <div className="grid gap-3">
-                {healthAlerts
-                  .filter((_, index) => visibleAlerts.includes(index))
-                  .map((alert, index) => {
-                    const originalIndex = healthAlerts.findIndex(a => a === alert)
-                    return (
-                      <Card
-                        key={originalIndex}
-                        className={`border-l-4 ${
-                          alert.priority === "high"
-                            ? "border-l-red-500"
-                            : alert.priority === "medium"
-                              ? "border-l-yellow-500"
-                              : "border-l-green-500"
-                        }`}
-                      >
-                        <CardContent className="flex items-center justify-between p-4">
-                          <div className="flex items-center space-x-3">
-                            <AlertCircle
-                              className={`w-5 h-5 ${
-                                alert.priority === "high"
-                                  ? "text-red-500"
-                                  : alert.priority === "medium"
-                                    ? "text-yellow-500"
-                                    : "text-green-500"
-                              }`}
-                            />
-                            <span className="text-sm font-medium">{alert.message}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleViewAlert(alert.targetTab)}
-                            >
-                              View
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleCloseAlert(originalIndex)}
-                              className="p-1 h-6 w-6"
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-              </div>
-            )}
 
             {/* Main Content Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-7">
+              <TabsList className="grid w-full grid-cols-6">
                 <TabsTrigger value="recovery">Recovery</TabsTrigger>
                 <TabsTrigger value="sleep">Sleep</TabsTrigger>
                 <TabsTrigger value="workouts">Workouts</TabsTrigger>
                 <TabsTrigger value="nutrition">🍎 Nutrition</TabsTrigger> {/* ← CLICK HERE */}
                 <TabsTrigger value="medical">Medical</TabsTrigger>
                 <TabsTrigger value="insights">AI Coach</TabsTrigger>
-                <TabsTrigger value="journal">Journal</TabsTrigger>
               </TabsList>
 
               <TabsContent value="recovery" className="space-y-4">
@@ -164,28 +146,8 @@ export default function HealthDashboard() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="journal" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center space-x-2">
-                      <Heart className="w-5 h-5" />
-                      <span>Daily Journal</span>
-                    </CardTitle>
-                    <CardDescription>Track your daily wellness responses and notes</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Heart className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>Journal entries will appear here</p>
-                      <p className="text-sm">Connect your device to sync journal responses</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
             </Tabs>
-          </div>
-        </SidebarInset>
       </div>
-    </SidebarProvider>
+    </div>
   )
 }

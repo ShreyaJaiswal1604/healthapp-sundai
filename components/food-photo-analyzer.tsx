@@ -528,19 +528,19 @@ export function FoodPhotoAnalyzer() {
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="font-medium">Calories</p>
-                        <p className="text-2xl font-bold">{analysisResult.nutritionalAnalysis.calories}</p>
+                        <p className="text-2xl font-bold">{analysisResult.nutritionalAnalysis?.calories || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="font-medium">Protein</p>
-                        <p className="text-xl font-semibold">{analysisResult.nutritionalAnalysis.macros.protein}g</p>
+                        <p className="text-xl font-semibold">{analysisResult.nutritionalAnalysis?.macros?.protein || 'N/A'}g</p>
                       </div>
                       <div>
                         <p className="font-medium">Carbs</p>
-                        <p className="text-xl font-semibold">{analysisResult.nutritionalAnalysis.macros.carbs}g</p>
+                        <p className="text-xl font-semibold">{analysisResult.nutritionalAnalysis?.macros?.carbs || 'N/A'}g</p>
                       </div>
                       <div>
                         <p className="font-medium">Fat</p>
-                        <p className="text-xl font-semibold">{analysisResult.nutritionalAnalysis.macros.fat}g</p>
+                        <p className="text-xl font-semibold">{analysisResult.nutritionalAnalysis?.macros?.fat || 'N/A'}g</p>
                       </div>
                     </div>
                   </CardContent>
@@ -559,24 +559,24 @@ export function FoodPhotoAnalyzer() {
                       <span className="font-medium">Health Score</span>
                       <div className="flex items-center space-x-2">
                         <span
-                          className={`text-2xl font-bold ${getHealthScoreColor(analysisResult.healthAssessment.score)}`}
+                          className={`text-2xl font-bold ${getHealthScoreColor(analysisResult.healthAssessment?.score || 0)}`}
                         >
-                          {analysisResult.healthAssessment.score}
+                          {analysisResult.healthAssessment?.score || 'N/A'}
                         </span>
-                        <Badge variant={getHealthScoreBadge(analysisResult.healthAssessment.category) as any}>
-                          {analysisResult.healthAssessment.category}
+                        <Badge variant={getHealthScoreBadge(analysisResult.healthAssessment?.category) as any}>
+                          {analysisResult.healthAssessment?.category || 'Unknown'}
                         </Badge>
                       </div>
                     </div>
 
-                    {analysisResult.healthAssessment.concerns && analysisResult.healthAssessment.concerns.length > 0 && (
+                    {analysisResult.healthAssessment?.concerns && analysisResult.healthAssessment.concerns.length > 0 && (
                       <Alert>
                         <AlertTriangle className="h-4 w-4" />
                         <AlertDescription>
                           <div className="space-y-1">
                             <p className="font-medium">Areas of Concern:</p>
                             <ul className="text-sm list-disc list-inside">
-                              {analysisResult.healthAssessment.concerns.map((concern, index) => (
+                              {analysisResult.healthAssessment?.concerns?.map((concern, index) => (
                                 <li key={index}>{concern}</li>
                               ))}
                             </ul>
@@ -585,14 +585,14 @@ export function FoodPhotoAnalyzer() {
                       </Alert>
                     )}
 
-                    {analysisResult.healthAssessment.positives && analysisResult.healthAssessment.positives.length > 0 && (
+                    {analysisResult.healthAssessment?.positives && analysisResult.healthAssessment.positives.length > 0 && (
                       <Alert>
                         <CheckCircle2 className="h-4 w-4" />
                         <AlertDescription>
                           <div className="space-y-1">
                             <p className="font-medium">Positive Aspects:</p>
                             <ul className="text-sm list-disc list-inside">
-                              {analysisResult.healthAssessment.positives.map((positive, index) => (
+                              {analysisResult.healthAssessment?.positives?.map((positive, index) => (
                                 <li key={index}>{positive}</li>
                               ))}
                             </ul>
@@ -629,7 +629,7 @@ export function FoodPhotoAnalyzer() {
                   </CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
-                      {analysisResult.personalizedRecommendations.map((rec, index) => (
+                      {analysisResult.personalizedRecommendations?.map((rec, index) => (
                         <li key={index} className="flex items-start space-x-2">
                           <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
                           <span className="text-sm">{rec}</span>
@@ -645,7 +645,7 @@ export function FoodPhotoAnalyzer() {
                   </CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
-                      {analysisResult.improvementSuggestions.map((suggestion, index) => (
+                      {analysisResult.improvementSuggestions?.map((suggestion, index) => (
                         <li key={index} className="flex items-start space-x-2">
                           <Zap className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
                           <span className="text-sm">{suggestion}</span>
@@ -665,7 +665,7 @@ export function FoodPhotoAnalyzer() {
                   </CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
-                      {analysisResult.contextualInsights.map((insight, index) => (
+                      {analysisResult.contextualInsights?.map((insight, index) => (
                         <li key={index} className="flex items-start space-x-2">
                           <Clock className="w-4 h-4 text-purple-500 mt-0.5 flex-shrink-0" />
                           <span className="text-sm">{insight}</span>

@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     const publicUrl = foodEntry.photoUrl
 
     const dbEntry = {
-      cycle_start_time: new Date().toISOString(),
+      logged_at: new Date().toISOString(),
       meal_type:        foodEntry.mealType,
       food_name:        foodEntry.foodName,
       description:      foodEntry.description,
@@ -66,9 +66,9 @@ export async function GET(request: Request) {
     const { data: foodLogs, error } = await supabase
       .from("food_logs")
       .select("*")
-      .gte("cycle_start_time", `${date}T00:00:00Z`)
-      .lt("cycle_start_time", `${date}T23:59:59Z`)
-      .order("cycle_start_time", { ascending: false })
+      .gte("logged_at", `${date}T00:00:00Z`)
+      .lt("logged_at", `${date}T23:59:59Z`)
+      .order("logged_at", { ascending: false })
 
     if (error) {
       console.error("Supabase error:", error)

@@ -1,6 +1,7 @@
 interface WhoopTokens {
   access_token: string;
   refresh_token?: string;
+  expires_in?: number;
 }
 
 interface WhoopUser {
@@ -70,6 +71,7 @@ interface WhoopWorkout {
   end: string;
   timezone_offset: string;
   sport_id: number;
+  sport_name: string;
   score_state: string;
   score: {
     strain: number;
@@ -161,11 +163,18 @@ class WhoopAPI {
     if (start) params.append('start', start);
     if (end) params.append('end', end);
 
-    return this.makeRequest<{ records: WhoopWorkout[] }>(
-      `/v1/activity/workout?${params}`,
+    const endpoint = `/v1/activity/workout?${params}`;
+    console.log('Calling Whoop API endpoint:', endpoint);
+    
+    const result = await this.makeRequest<{ records: WhoopWorkout[] }>(
+      endpoint,
       accessToken
     );
+    
+    console.log('Raw Whoop API response:', JSON.stringify(result, null, 2));
+    return result;
   }
+
 
   async refreshToken(refreshToken: string): Promise<WhoopTokens> {
     const response = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {

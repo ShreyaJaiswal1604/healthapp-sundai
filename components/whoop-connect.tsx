@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +15,11 @@ export function WhoopConnect({ onConnect }: WhoopConnectProps) {
   const [isConnecting, setIsConnecting] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
+  const [connectionInfo, setConnectionInfo] = useState<{
+    connectedAt?: string;
+    lastSync?: string;
+  }>({})
+  const { updateUser } = useAuth()
 
   useEffect(() => {
     checkConnectionStatus()
@@ -21,17 +27,23 @@ export function WhoopConnect({ onConnect }: WhoopConnectProps) {
 
   const checkConnectionStatus = async () => {
     try {
-      // Try to fetch some Whoop data to check if connected
-      const response = await fetch('/api/whoop/recovery?limit=1')
+      // Check connection status from database
+      const response = await fetch('/api/whoop/connection-status')
       if (response.ok) {
-        setIsConnected(true)
+        const data = await response.json()
+        setIsConnected(data.connected)
+        setConnectionInfo({
+          connectedAt: data.connectedAt,
+          lastSync: data.lastSync
+        })
       } else {
         setIsConnected(false)
+        setConnectionInfo({})
       }
     } catch (error) {
-      // Network error or connection refused - Whoop not connected
-      console.log('Whoop connection check failed:', error.message)
+      console.log('Whoop connection check failed:', error)
       setIsConnected(false)
+      setConnectionInfo({})
     } finally {
       setIsChecking(false)
     }
@@ -63,15 +75,26 @@ export function WhoopConnect({ onConnect }: WhoopConnectProps) {
 
   const handleDisconnect = async () => {
     try {
-      // Clear the cookies by making a request to a logout endpoint
       const response = await fetch('/api/auth/whoop/disconnect', { method: 'POST' })
       if (response.ok) {
         setIsConnected(false)
-        window.location.reload() // Refresh to clear any cached data
+        setConnectionInfo({})
+        // Trigger a refresh of the connection status
+        await checkConnectionStatus()
       }
     } catch (error) {
       console.error('Failed to disconnect:', error)
     }
+  }
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'Never'
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   }
 
   if (isConnected) {
@@ -103,9 +126,10 @@ export function WhoopConnect({ onConnect }: WhoopConnectProps) {
               </Button>
             </div>
           </div>
-          <p className="text-sm text-muted-foreground mt-2">
-            Real-time recovery, sleep, and workout data from your Whoop device
-          </p>
+          <div className="text-xs text-muted-foreground mt-3 space-y-1">
+            <p>Connected: {formatDate(connectionInfo.connectedAt)}</p>
+            <p>Last sync: {formatDate(connectionInfo.lastSync)}</p>
+          </div>
         </CardContent>
       </Card>
     )

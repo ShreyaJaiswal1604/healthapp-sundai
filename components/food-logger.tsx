@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,7 +40,11 @@ interface FoodEntry {
   createdAt: Date
 }
 
-export function FoodLogger() {
+interface FoodLoggerProps {
+  onFoodLogged?: () => void
+}
+
+export function FoodLogger({ onFoodLogged }: FoodLoggerProps = {}) {
   const [isOpen, setIsOpen] = useState(false)
   const [foodEntries, setFoodEntries] = useState<FoodEntry[]>([])
   const [currentEntry, setCurrentEntry] = useState<Partial<FoodEntry>>({
@@ -56,6 +60,47 @@ export function FoodLogger() {
   const [analysisResult, setAnalysisResult] = useState<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Load existing food entries when component mounts
+  useEffect(() => {
+    loadFoodEntries()
+  }, [])
+
+  const loadFoodEntries = async () => {
+    try {
+      setIsLoading(true)
+      const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+      const response = await fetch(`/api/food-logs?date=${today}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        const entries = (data.foodLogs || []).map((log: any) => ({
+          id: log.id || Date.now().toString(),
+          photo: log.photo_url,
+          mealType: log.meal_type,
+          foodName: log.food_name,
+          description: log.description || '',
+          quantity: log.quantity || 1,
+          unit: log.unit || 'serving',
+          mealTime: log.meal_time || '12:00',
+          estimatedCalories: log.calories,
+          macros: {
+            protein: log.protein_g || 0,
+            carbs: log.carbs_g || 0,
+            fat: log.fat_g || 0,
+            fiber: log.fiber_g || 0
+          },
+          createdAt: new Date(log.logged_at || Date.now())
+        }))
+        setFoodEntries(entries)
+      }
+    } catch (error) {
+      console.error('Error loading food entries:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const mealTypes = [
     { value: "breakfast", label: "Breakfast", icon: "🌅" },
@@ -113,13 +158,16 @@ export function FoodLogger() {
       const result = await response.json()
       setAnalysisResult(result.analysis)
 
-      // Auto-fill nutritional data if available
-      if (result.analysis) {
+      // Auto-fill nutritional data if available and valid
+      if (result.analysis && !result.analysis.error) {
         setCurrentEntry((prev) => ({
           ...prev,
-          estimatedCalories: result.analysis.calories,
-          macros: result.analysis.macros,
+          estimatedCalories: result.analysis.calories || prev.estimatedCalories,
+          macros: result.analysis.macros || prev.macros,
         }))
+      } else if (result.analysis?.error) {
+        // Show error message but don't fail
+        alert("AI analysis failed. Please enter nutrition information manually.")
       }
     } catch (error) {
       console.error("Error analyzing food:", error)
@@ -131,8 +179,17 @@ export function FoodLogger() {
 
   const saveFoodEntry = async () => {
     if (!currentEntry.mealType || !currentEntry.foodName) {
-      alert("Please fill in required fields")
+      alert("Please fill in meal type and food name")
       return
+    }
+
+    // Encourage nutrition data but don't require it
+    const hasNutritionData = currentEntry.estimatedCalories || 
+      (currentEntry.macros && (currentEntry.macros.protein || currentEntry.macros.carbs || currentEntry.macros.fat))
+    
+    if (!hasNutritionData) {
+      const proceed = confirm("No nutrition information entered. Save food log anyway?")
+      if (!proceed) return
     }
 
     const newEntry: FoodEntry = {
@@ -149,16 +206,28 @@ export function FoodLogger() {
       createdAt: new Date(),
     }
 
+    // Add user_id for the API request
+    const entryWithUserId = {
+      ...newEntry,
+      user_id: "550e8400-e29b-41d4-a716-446655440000", // Default user ID
+      photoUrl: photo // API expects photoUrl not photo
+    }
+
     try {
       // Save to database
       const response = await fetch("/api/food-logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newEntry),
+        body: JSON.stringify(entryWithUserId),
       })
 
       if (response.ok) {
-        setFoodEntries((prev) => [newEntry, ...prev])
+        // Reload entries from database to get the latest data
+        await loadFoodEntries()
+        // Notify parent component to refresh
+        if (onFoodLogged) {
+          onFoodLogged()
+        }
         resetForm()
         setIsOpen(false)
         alert("Food logged successfully!")
@@ -179,6 +248,8 @@ export function FoodLogger() {
       quantity: 1,
       unit: "serving",
       mealTime: new Date().toTimeString().slice(0, 5),
+      estimatedCalories: undefined,
+      macros: undefined
     })
     setPhoto(null)
     setAnalysisResult(null)
@@ -203,7 +274,7 @@ export function FoodLogger() {
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogTrigger asChild>
           <Button className="w-full" size="lg">
-            <Camera className="w-5 h-5 mr-2" />
+            <Utensils className="w-5 h-5 mr-2" />
             Log Food
           </Button>
         </DialogTrigger>
@@ -211,59 +282,10 @@ export function FoodLogger() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Log Your Food</DialogTitle>
-            <DialogDescription>Take a photo or describe your meal for nutritional analysis</DialogDescription>
+            <DialogDescription>Enter your meal details and nutrition information</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* Photo Capture Section */}
-            <div className="space-y-4">
-              <Label className="text-base font-medium">Food Photo (Optional)</Label>
-
-              {photo ? (
-                <div className="relative">
-                  <img src={photo || "/placeholder.svg"} alt="Food" className="w-full h-48 object-cover rounded-lg" />
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="absolute top-2 right-2"
-                    onClick={() => setPhoto(null)}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  <Button
-                    variant="outline"
-                    className="h-24 flex-col space-y-2 bg-transparent"
-                    onClick={() => cameraInputRef.current?.click()}
-                  >
-                    <Camera className="w-6 h-6" />
-                    <span className="text-sm">Take Photo</span>
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    className="h-24 flex-col space-y-2 bg-transparent"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload className="w-6 h-6" />
-                    <span className="text-sm">Upload Photo</span>
-                  </Button>
-                </div>
-              )}
-
-              <input
-                ref={cameraInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handlePhotoCapture}
-              />
-
-              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoCapture} />
-            </div>
 
             {/* Meal Details */}
             <div className="grid grid-cols-2 gap-4">
@@ -356,25 +378,187 @@ export function FoodLogger() {
               </div>
             </div>
 
-            {/* AI Analysis Button */}
-            <Button
-              onClick={analyzeFood}
-              disabled={isAnalyzing || (!currentEntry.foodName && !photo)}
-              className="w-full bg-transparent"
-              variant="outline"
-            >
-              {isAnalyzing ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
-                  Analyzing...
-                </>
+            {/* Nutrition Input Section */}
+            <div className="space-y-4 border-t pt-4">
+              <Label className="text-base font-medium">Nutrition Information</Label>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="calories">Calories</Label>
+                  <Input
+                    id="calories"
+                    type="number"
+                    min="0"
+                    placeholder="e.g., 250"
+                    value={currentEntry.estimatedCalories || ''}
+                    onChange={(e) => setCurrentEntry((prev) => ({ 
+                      ...prev, 
+                      estimatedCalories: e.target.value ? Number.parseInt(e.target.value) : undefined 
+                    }))}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="protein">Protein (g)</Label>
+                  <Input
+                    id="protein"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="e.g., 20"
+                    value={currentEntry.macros?.protein || ''}
+                    onChange={(e) => setCurrentEntry((prev) => ({ 
+                      ...prev, 
+                      macros: {
+                        ...prev.macros,
+                        protein: e.target.value ? Number.parseFloat(e.target.value) : 0,
+                        carbs: prev.macros?.carbs || 0,
+                        fat: prev.macros?.fat || 0,
+                        fiber: prev.macros?.fiber || 0
+                      }
+                    }))}
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="carbs">Carbs (g)</Label>
+                  <Input
+                    id="carbs"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="e.g., 30"
+                    value={currentEntry.macros?.carbs || ''}
+                    onChange={(e) => setCurrentEntry((prev) => ({ 
+                      ...prev, 
+                      macros: {
+                        ...prev.macros,
+                        protein: prev.macros?.protein || 0,
+                        carbs: e.target.value ? Number.parseFloat(e.target.value) : 0,
+                        fat: prev.macros?.fat || 0,
+                        fiber: prev.macros?.fiber || 0
+                      }
+                    }))}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="fat">Fat (g)</Label>
+                  <Input
+                    id="fat"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="e.g., 10"
+                    value={currentEntry.macros?.fat || ''}
+                    onChange={(e) => setCurrentEntry((prev) => ({ 
+                      ...prev, 
+                      macros: {
+                        ...prev.macros,
+                        protein: prev.macros?.protein || 0,
+                        carbs: prev.macros?.carbs || 0,
+                        fat: e.target.value ? Number.parseFloat(e.target.value) : 0,
+                        fiber: prev.macros?.fiber || 0
+                      }
+                    }))}
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="fiber">Fiber (g) - Optional</Label>
+                <Input
+                  id="fiber"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  placeholder="e.g., 5"
+                  value={currentEntry.macros?.fiber || ''}
+                  onChange={(e) => setCurrentEntry((prev) => ({ 
+                    ...prev, 
+                    macros: {
+                      ...prev.macros,
+                      protein: prev.macros?.protein || 0,
+                      carbs: prev.macros?.carbs || 0,
+                      fat: prev.macros?.fat || 0,
+                      fiber: e.target.value ? Number.parseFloat(e.target.value) : 0
+                    }
+                  }))}
+                />
+              </div>
+            </div>
+
+            {/* Optional Photo and AI Analysis Section */}
+            <div className="space-y-4 border-t pt-4">
+              <Label className="text-base font-medium">Optional: Photo & AI Analysis</Label>
+              
+              {photo ? (
+                <div className="relative">
+                  <img src={photo || "/placeholder.svg"} alt="Food" className="w-full h-48 object-cover rounded-lg" />
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="absolute top-2 right-2"
+                    onClick={() => setPhoto(null)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
               ) : (
-                <>
-                  <Zap className="w-4 h-4 mr-2" />
-                  Analyze Nutrition
-                </>
+                <div className="grid grid-cols-2 gap-4">
+                  <Button
+                    variant="outline"
+                    className="h-20 flex-col space-y-1 bg-transparent"
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    <Camera className="w-5 h-5" />
+                    <span className="text-xs">Take Photo</span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="h-20 flex-col space-y-1 bg-transparent"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="w-5 h-5" />
+                    <span className="text-xs">Upload Photo</span>
+                  </Button>
+                </div>
               )}
-            </Button>
+
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handlePhotoCapture}
+              />
+
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoCapture} />
+              
+              <Button
+                onClick={analyzeFood}
+                disabled={isAnalyzing || (!currentEntry.foodName && !photo)}
+                className="w-full bg-transparent"
+                variant="outline"
+                size="sm"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Auto-fill with AI Analysis
+                  </>
+                )}
+              </Button>
+            </div>
 
             {/* Analysis Results */}
             {analysisResult && (
@@ -422,7 +606,12 @@ export function FoodLogger() {
           <CardDescription>Your meals and nutritional intake</CardDescription>
         </CardHeader>
         <CardContent>
-          {foodEntries.length === 0 ? (
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+              <p>Loading food entries...</p>
+            </div>
+          ) : foodEntries.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Utensils className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No food entries yet</p>

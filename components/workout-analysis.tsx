@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Activity, Flame, Clock, MapPin, Zap } from "lucide-react"
 import type { WhoopWorkout } from "@/lib/whoop"
 
+
 export function WorkoutAnalysis() {
   const [whoopData, setWhoopData] = useState<WhoopWorkout[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,6 +22,7 @@ export function WorkoutAnalysis() {
       const whoopResponse = await fetch('/api/whoop/workouts?limit=10')
       if (whoopResponse.ok) {
         const whoopResult = await whoopResponse.json()
+        console.log("result from whoopresult:", whoopResult)
         setWhoopData(whoopResult.records || [])
         setIsConnected(true)
       } else {
@@ -72,7 +74,7 @@ export function WorkoutAnalysis() {
     return {
       "Workout start time": workout.start,
       "Duration (min)": durationMinutes, // Whole number minutes
-      "Activity name": `Sport ID ${workout.sport_id}`, // You might want to map sport IDs to names
+      "Activity name": workout.sport_name,
       "Activity Strain": Math.round(workout.score.strain * 100) / 100, // 2 decimal places
       "Energy burned (cal)": Math.round((workout.score.kilojoule * 0.239006) * 100) / 100, // 2 decimal places
       "Max HR (bpm)": Math.round(workout.score.max_heart_rate),
@@ -85,20 +87,45 @@ export function WorkoutAnalysis() {
     }
   })
 
-  const chartData = whoopData
-    .slice(0, 7)
-    .reverse()
-    .map((workout) => {
-      const durationMinutes = Math.round((new Date(workout.end).getTime() - new Date(workout.start).getTime()) / 60000)
-      return {
-        date: new Date(workout.start).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        strain: Math.round(workout.score.strain * 100) / 100,
-        calories: Math.round((workout.score.kilojoule * 0.239006) * 100) / 100,
-        duration: durationMinutes, // Whole number minutes
-        avgHR: Math.round(workout.score.average_heart_rate),
-        maxHR: Math.round(workout.score.max_heart_rate),
+  // Group workouts by date and aggregate metrics
+  const workoutsByDate = whoopData.reduce((acc: { [key: string]: any }, workout) => {
+    const dateKey = new Date(workout.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    const durationMinutes = Math.round((new Date(workout.end).getTime() - new Date(workout.start).getTime()) / 60000)
+    const calories = Math.round((workout.score.kilojoule * 0.239006) * 100) / 100
+    
+    if (!acc[dateKey]) {
+      acc[dateKey] = {
+        date: dateKey,
+        strain: 0,
+        calories: 0,
+        duration: 0,
+        workoutCount: 0,
+        totalAvgHR: 0,
+        maxHR: 0,
       }
-    })
+    }
+    
+    acc[dateKey].strain += workout.score.strain
+    acc[dateKey].calories += calories
+    acc[dateKey].duration += durationMinutes
+    acc[dateKey].workoutCount += 1
+    acc[dateKey].totalAvgHR += workout.score.average_heart_rate
+    acc[dateKey].maxHR = Math.max(acc[dateKey].maxHR, workout.score.max_heart_rate)
+    
+    return acc
+  }, {})
+
+  const chartData = Object.values(workoutsByDate)
+    .slice(-7) // Last 7 days
+    .map((day: any) => ({
+      date: day.date,
+      strain: Math.round(day.strain * 100) / 100,
+      calories: Math.round(day.calories * 100) / 100,
+      duration: day.duration,
+      avgHR: Math.round(day.totalAvgHR / day.workoutCount),
+      maxHR: Math.round(day.maxHR),
+      workoutCount: day.workoutCount
+    }))
 
   const totalCalories = Math.round(recentWorkouts.reduce((sum, workout) => sum + (workout["Energy burned (cal)"] || 0), 0) * 100) / 100
   const totalDuration = recentWorkouts.reduce((sum, workout) => sum + (workout["Duration (min)"] || 0), 0) // Whole number minutes
